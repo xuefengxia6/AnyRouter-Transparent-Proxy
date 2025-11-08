@@ -33,7 +33,7 @@ app = FastAPI(
 # 主站：https://anyrouter.top
 # 备用：https://q.quuvv.cn
 load_dotenv()
-TARGET_BASE_URL = os.getenv("ANYROUTER_BASE_URL", "https://anyrouter.top")
+TARGET_BASE_URL = os.getenv("API_BASE_URL", "https://anyrouter.top")
 print(f"Base Url: {TARGET_BASE_URL}")
 PRESERVE_HOST = False  # 是否保留原始 Host
 

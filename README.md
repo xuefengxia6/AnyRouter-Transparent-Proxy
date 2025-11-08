@@ -32,12 +32,72 @@
 
 ## 🚀 快速开始
 
-### 环境要求
+### 方式一：使用 Docker（推荐）
+
+#### 环境要求
+
+- Docker
+- Docker Compose（可选）
+
+#### 使用 Docker Compose（最简单）
+
+```bash
+# 1. 克隆或下载项目
+git clone <repository-url>
+cd AnyRouter-Transparent-Proxy
+
+# 2. 复制环境变量模板（可选）
+cp .env.example .env
+
+# 3. 编辑 .env 文件修改配置（可选）
+# 默认使用 https://anyrouter.top
+
+# 4. 启动服务
+docker-compose up -d
+
+# 5. 查看日志
+docker-compose logs -f
+
+# 6. 停止服务
+docker-compose down
+
+# 7.重启服务
+docker-compose down && docker-compose up -d
+```
+
+#### 使用 Docker 命令
+
+```bash
+# 1. 构建镜像
+docker build -t anthropic-proxy .
+
+# 2. 运行容器
+docker run -d \
+  --name anthropic-proxy \
+  -p 8088:8088 \
+  -e API_BASE_URL=https://anyrouter.top \
+  anthropic-proxy
+
+# 3. 查看日志
+docker logs -f anthropic-proxy
+
+# 4. 停止容器
+docker stop anthropic-proxy
+docker rm anthropic-proxy
+```
+
+服务将在 `http://localhost:8088` 启动。
+
+然后替换 Claude Code 中的 API 地址就可以啦~
+
+### 方式二：本地 Python 运行
+
+#### 环境要求
 
 - Python 3.7+
 - pip
 
-### 安装依赖
+#### 安装依赖
 
 ```bash
 # 创建虚拟环境（可选但推荐）
@@ -71,33 +131,20 @@ uvicorn anthropic_proxy:app --host 0.0.0.0 --port 8088 --reload
 
 服务将在 `http://0.0.0.0:8088` 启动。
 
+同样替换 Claude Code 中的 API 地址就可以啦~
+
 ## ⚙️ 配置说明
 
-编辑 `anthropic_proxy.py` 文件中的配置项：
+### 环境变量配置
 
-### 基础配置
+通过 `.env` 文件或环境变量进行配置：
 
-```python
-# 是否保留原始 Host 头（通常设为 False）
-PRESERVE_HOST = False
+```bash
+# .env 文件内容
+API_BASE_URL=https://anyrouter.top  # 或 https://q.quuvv.cn
 ```
 
-### System Prompt 替换
-
-```python
-# 设置为字符串以启用替换，设置为 None 则禁用替换
-SYSTEM_PROMPT_REPLACEMENT = "You are Claude Code, Anthropic's official CLI for Claude."
-```
-
-### 自定义请求头
-
-```python
-CUSTOM_HEADERS = {
-    "User-Agent": "Claude-Proxy/1.1",
-    "X-Custom-Header": "Your-Value",
-    # 添加更多自定义头...
-}
-```
+> 注：配置完成后需要重新启动服务
 
 ## 📖 使用示例
 
