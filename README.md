@@ -2,6 +2,11 @@
 
 一个基于 FastAPI 的轻量级透明 HTTP 代理服务，专为解决 AnyRouter 的 Anthropic API 在 Claude Code for VS Code 插件中报错 500 的问题而设计。
 
+## 效果图
+
+<img width="3754" height="2110" alt="VS Code 终于能用上 CC 插件了" src="https://github.com/user-attachments/assets/6a492f30-43ed-4ba1-ad9f-15801b356f7a" />
+
+
 ## 目录
 
 - [核心特性](#核心特性)
