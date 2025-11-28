@@ -60,6 +60,10 @@ PRESERVE_HOST = False  # 是否保留原始 Host
 SYSTEM_PROMPT_REPLACEMENT = os.getenv("SYSTEM_PROMPT_REPLACEMENT")  # 例如: "你是一个有用的AI助手"
 print(f"System prompt replacement: {SYSTEM_PROMPT_REPLACEMENT}")
 
+# 调试模式配置
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
+print(f"Debug mode: {DEBUG_MODE}")
+
 
 # 自定义 Header 配置
 # 从 env/.env.headers.json 文件加载，如果文件不存在或解析失败，则使用空字典 {}
@@ -240,12 +244,15 @@ async def proxy(path: str, request: Request):
 
     # 读取 body
     body = await request.body()
-    # print(f"[Proxy] Original body ({len(body)} bytes): {body[:200]}..." if len(body) > 200 else f"[Proxy] Original body: {body}")
-    try:
-        data = json.loads(body.decode('utf-8'))
-        print(f"[Proxy] Original body ({len(body)} bytes): {data}")
-    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        print(f"[Proxy] Failed to parse JSON: {e}")
+    # 仅测试环境打印详细日志
+    if DEBUG_MODE:
+        try:
+            data = json.loads(body.decode('utf-8'))
+            print(f"[Proxy] Original body ({len(body)} bytes): {data}")
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            print(f"[Proxy] Failed to parse JSON: {e}")
+    else:
+        print(f"[Proxy] Request: {request.method} {path} \nOriginal body ({len(body)} bytes): {body[:200]}..." if len(body) > 200 else f"[Proxy] Original body: {body}")
 
     # 处理请求体（替换 system prompt）
     body = process_request_body(body)
