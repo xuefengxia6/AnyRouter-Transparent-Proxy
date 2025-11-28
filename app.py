@@ -252,7 +252,8 @@ async def proxy(path: str, request: Request):
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             print(f"[Proxy] Failed to parse JSON: {e}")
     else:
-        print(f"[Proxy] Request: {request.method} {path} \nOriginal body ({len(body)} bytes): {body[:200]}..." if len(body) > 200 else f"[Proxy] Original body: {body}")
+        print(f"[Proxy] Request: {request.method} {path}")
+        print(f"[Proxy] Original body ({len(body)} bytes): {body[:200]}..." if len(body) > 200 else f"[Proxy] Original body: {body}")
 
     # 处理请求体（替换 system prompt）
     body = process_request_body(body)
