@@ -23,6 +23,7 @@ async def lifespan(_: FastAPI):
     print("Application Configuration:")
     print(f"  Base URL: {TARGET_BASE_URL}")
     print(f"  System Prompt Replacement: {SYSTEM_PROMPT_REPLACEMENT}")
+    print(f"  System Prompt Insert Mode: {SYSTEM_PROMPT_BLOCK_INSERT_IF_NOT_EXIST}")
     print(f"  Server Port: {PORT}")
     print(f"  Custom Headers: {len(CUSTOM_HEADERS)} headers loaded")
     if CUSTOM_HEADERS:
@@ -89,6 +90,15 @@ PRESERVE_HOST = False  # 是否保留原始 Host
 # 设置为 None 则保持原样不修改
 # 通过环境变量 SYSTEM_PROMPT_REPLACEMENT 配置，默认为 None
 SYSTEM_PROMPT_REPLACEMENT = os.getenv("SYSTEM_PROMPT_REPLACEMENT")  # 例如: "你是一个有用的AI助手"
+
+# System prompt 插入模式配置
+# 设置为 true/1/yes 时，启用插入模式而非替换模式
+# 通过环境变量 SYSTEM_PROMPT_BLOCK_INSERT_IF_NOT_EXIST 配置，默认为 false
+SYSTEM_PROMPT_BLOCK_INSERT_IF_NOT_EXIST = os.getenv("SYSTEM_PROMPT_BLOCK_INSERT_IF_NOT_EXIST", "false").lower() in ("true", "1", "yes")
+
+# 关键字常量定义
+# 用于判断是否需要执行替换操作
+CLAUDE_CODE_KEYWORD = "Claude Code"
 
 # 调试模式配置
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
@@ -243,9 +253,29 @@ def process_request_body(body: bytes) -> bytes:
     original_text = first_element["text"]
     print(f"[System Replacement] Original system[0].text: {original_text[:100]}..." if len(original_text) > 100 else f"[System Replacement] Original system[0].text: {original_text}")
 
-    # 执行替换
-    first_element["text"] = SYSTEM_PROMPT_REPLACEMENT
-    print(f"[System Replacement] Replaced with: {SYSTEM_PROMPT_REPLACEMENT[:100]}..." if len(SYSTEM_PROMPT_REPLACEMENT) > 100 else f"[System Replacement] Replaced with: {SYSTEM_PROMPT_REPLACEMENT}")
+    # 判断是否启用插入模式
+    if SYSTEM_PROMPT_BLOCK_INSERT_IF_NOT_EXIST:
+        # 插入模式：检查是否包含关键字（忽略大小写）
+        if CLAUDE_CODE_KEYWORD.lower() in original_text.lower():
+            # 包含关键字：执行替换
+            first_element["text"] = SYSTEM_PROMPT_REPLACEMENT
+            print(f"[System Replacement] Found '{CLAUDE_CODE_KEYWORD}', replacing with: {SYSTEM_PROMPT_REPLACEMENT[:100]}..." if len(SYSTEM_PROMPT_REPLACEMENT) > 100 else f"[System Replacement] Found '{CLAUDE_CODE_KEYWORD}', replacing with: {SYSTEM_PROMPT_REPLACEMENT}")
+        else:
+            # 不包含关键字：执行插入
+            new_element = {
+                "type": "text",
+                "text": SYSTEM_PROMPT_REPLACEMENT,
+                "cache_control": {
+                    "type": "ephemeral"
+                }
+            }
+            data["system"].insert(0, new_element)
+            print(f"[System Replacement] '{CLAUDE_CODE_KEYWORD}' not found, inserting at position 0: {SYSTEM_PROMPT_REPLACEMENT[:100]}..." if len(SYSTEM_PROMPT_REPLACEMENT) > 100 else f"[System Replacement] '{CLAUDE_CODE_KEYWORD}' not found, inserting at position 0: {SYSTEM_PROMPT_REPLACEMENT}")
+            print(f"[System Replacement] Array length changed: {len(data['system'])-1} -> {len(data['system'])}")
+    else:
+        # 原始模式：直接替换
+        first_element["text"] = SYSTEM_PROMPT_REPLACEMENT
+        print(f"[System Replacement] Replaced with: {SYSTEM_PROMPT_REPLACEMENT[:100]}..." if len(SYSTEM_PROMPT_REPLACEMENT) > 100 else f"[System Replacement] Replaced with: {SYSTEM_PROMPT_REPLACEMENT}")
 
     print(f"[System Replacement] original_text == SYSTEM_PROMPT_REPLACEMENT:{SYSTEM_PROMPT_REPLACEMENT == original_text}")
 
@@ -290,7 +320,7 @@ async def proxy(path: str, request: Request):
     if DEBUG_MODE:
         try:
             data = json.loads(body.decode('utf-8'))
-            print(f"[Proxy] Original body ({len(body)} bytes): {data}")
+            print(f"[Proxy] Original body ({len(body)} bytes): {json.dumps(data, indent=4)}")
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             print(f"[Proxy] Failed to parse JSON: {e}")
     else:
