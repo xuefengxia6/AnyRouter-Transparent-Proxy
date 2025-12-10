@@ -6,21 +6,29 @@ import type { SystemConfig } from '@/types'
 // 主题存储
 export const useThemeStore = defineStore('theme', () => {
   // 状态
-  const isDark = ref(false)
   const systemPreference = ref<'light' | 'dark' | 'auto'>('auto')
+  let mediaQuery: MediaQueryList | null = null
+  let mediaQueryListener: ((event: MediaQueryListEvent) => void) | null = null
+  let initialized = false
+
+  const ensureMediaQuery = () => {
+    if (typeof window === 'undefined') return null
+    if (!mediaQuery) {
+      mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    }
+    return mediaQuery
+  }
 
   // 计算属性
   const currentTheme = computed(() => {
+    const prefersDark = ensureMediaQuery()?.matches ?? false
     if (systemPreference.value === 'auto') {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      return prefersDark ? 'dark' : 'light'
     }
     return systemPreference.value
   })
 
-  const isDarkMode = computed(() => {
-    return systemPreference.value === 'dark' ||
-           (systemPreference.value === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  })
+  const isDarkMode = computed(() => currentTheme.value === 'dark')
 
   // 方法
   const setTheme = async (theme: 'light' | 'dark' | 'auto') => {
@@ -32,47 +40,62 @@ export const useThemeStore = defineStore('theme', () => {
   }
 
   const toggleDarkMode = async () => {
-    if (systemPreference.value === 'auto') {
-      await setTheme('dark')
-    } else if (systemPreference.value === 'dark') {
-      await setTheme('light')
-    } else {
-      await setTheme('auto')
-    }
+    const nextTheme: 'light' | 'dark' = isDarkMode.value ? 'light' : 'dark'
+    await setTheme(nextTheme)
   }
 
   const updateThemeClass = () => {
+    if (typeof document === 'undefined') return
     const html = document.documentElement
-    if (isDarkMode.value) {
-      html.classList.add('dark')
-    } else {
-      html.classList.remove('dark')
-    }
+    const theme = currentTheme.value
+    html.classList.toggle('dark', theme === 'dark')
+    html.dataset.theme = theme
   }
 
   const saveToStorage = () => {
+    if (typeof localStorage === 'undefined') return
     localStorage.setItem('theme_preference', systemPreference.value)
   }
 
   const loadFromStorage = () => {
+    if (typeof localStorage === 'undefined') return
     const saved = localStorage.getItem('theme_preference')
     if (saved && ['light', 'dark', 'auto'].includes(saved)) {
       systemPreference.value = saved as 'light' | 'dark' | 'auto'
     }
   }
 
-  const init = () => {
-    loadFromStorage()
-    updateThemeClass()
+  const bindSystemPreferenceListener = () => {
+    const mq = ensureMediaQuery()
+    if (!mq || mediaQueryListener) return
 
-    // 监听系统主题变化
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    mediaQuery.addEventListener('change', updateThemeClass)
+    mediaQueryListener = (_event: MediaQueryListEvent) => {
+      if (systemPreference.value === 'auto') {
+        updateThemeClass()
+      }
+    }
+
+    if (mq.addEventListener) {
+      mq.addEventListener('change', mediaQueryListener)
+    } else if (mq.addListener) {
+      mq.addListener(mediaQueryListener)
+    }
+  }
+
+  const init = () => {
+    if (initialized) {
+      updateThemeClass()
+      return
+    }
+
+    loadFromStorage()
+    bindSystemPreferenceListener()
+    updateThemeClass()
+    initialized = true
   }
 
   return {
     // 状态
-    isDark,
     systemPreference,
     // 计算属性
     currentTheme,

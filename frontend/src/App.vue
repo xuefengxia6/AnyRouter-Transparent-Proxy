@@ -25,19 +25,15 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { useAuthStore, useThemeStore } from '@/stores'
+import { useAuthStore } from '@/stores'
 import BaseLayout from '@/components/BaseLayout.vue'
 import NotificationContainer from '@/components/NotificationContainer.vue'
 
 // Store
 const authStore = useAuthStore()
-const themeStore = useThemeStore()
 
 // 应用初始化
 onMounted(async () => {
-  // 初始化主题
-  themeStore.init()
-
   // 初始化认证状态
   await authStore.initAuth()
 })
