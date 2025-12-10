@@ -26,9 +26,9 @@ export interface SystemStats {
     }
   }
   time_series: {
-    requests_per_minute: Array<{ time: string; count: number }>
-    errors_per_minute: Array<{ time: string; count: number }>
-    bytes_per_minute: Array<{ time: string; count: number }>
+    requests_per_minute: Array<{ time: number; count: number }>  // time 为 Unix 时间戳（秒级）
+    errors_per_minute: Array<{ time: number; count: number }>    // time 为 Unix 时间戳（秒级）
+    bytes_per_minute: Array<{ time: number; count: number }>     // time 为 Unix 时间戳（秒级）
   }
   top_paths: Record<string, {
     count: number

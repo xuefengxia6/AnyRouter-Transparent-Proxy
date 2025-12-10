@@ -120,7 +120,8 @@ async def record_request_error(request_id: str, path: str, error_msg: str, respo
 async def update_time_window_stats():
     """更新时间窗口统计（每分钟调用一次）"""
     current_time = time.time()
-    current_minute = datetime.fromtimestamp(current_time).strftime("%Y-%m-%d %H:%M")
+    # 将当前时间戳向下取整到分钟级别（秒级时间戳）
+    current_minute_timestamp = int(current_time // 60) * 60
 
     async with stats_lock:
         # 计算本分钟的请求数
@@ -132,15 +133,15 @@ async def update_time_window_stats():
                          if req["timestamp"] > current_time - 60)
 
         time_window_stats["requests_per_minute"].append({
-            "time": current_minute,
+            "time": current_minute_timestamp,  # 使用 Unix 时间戳（秒级）
             "count": minute_requests
         })
         time_window_stats["errors_per_minute"].append({
-            "time": current_minute,
+            "time": current_minute_timestamp,  # 使用 Unix 时间戳（秒级）
             "count": minute_errors
         })
         time_window_stats["bytes_per_minute"].append({
-            "time": current_minute,
+            "time": current_minute_timestamp,  # 使用 Unix 时间戳（秒级）
             "count": minute_bytes
         })
 
@@ -584,7 +585,16 @@ async def admin_static(path: str = ""):
 
     # 检查文件是否存在
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
+        # SPA fallback 机制：如果请求的路径不包含文件扩展名（即前端路由），返回 index.html
+        # 这样前端路由可以接管并正确处理路由
+        if '.' not in os.path.basename(path):
+            # 这是一个前端路由路径（如 /admin/dashboard），返回 index.html
+            file_path = os.path.join("static", "index.html")
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=500, detail="index.html not found")
+        else:
+            # 这是一个静态资源请求（如 /admin/assets/xxx.js），但文件不存在
+            raise HTTPException(status_code=404, detail="File not found")
 
     # 返回文件内容
     try:
@@ -646,19 +656,19 @@ async def get_time_filtered_data(start_time: float = None, end_time: float = Non
             if start_time <= error["timestamp"] <= end_time
         ]
 
-        # 过滤时间窗口统计
+        # 过滤时间窗口统计（time 字段现在是 Unix 时间戳）
         filtered_time_series = {
             "requests_per_minute": [
                 data for data in time_window_stats["requests_per_minute"]
-                if start_time <= datetime.strptime(data["time"], "%Y-%m-%d %H:%M").timestamp() <= end_time
+                if start_time <= data["time"] <= end_time
             ],
             "errors_per_minute": [
                 data for data in time_window_stats["errors_per_minute"]
-                if start_time <= datetime.strptime(data["time"], "%Y-%m-%d %H:%M").timestamp() <= end_time
+                if start_time <= data["time"] <= end_time
             ],
             "bytes_per_minute": [
                 data for data in time_window_stats["bytes_per_minute"]
-                if start_time <= datetime.strptime(data["time"], "%Y-%m-%d %H:%M").timestamp() <= end_time
+                if start_time <= data["time"] <= end_time
             ]
         }
 

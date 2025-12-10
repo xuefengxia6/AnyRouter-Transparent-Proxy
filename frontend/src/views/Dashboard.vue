@@ -366,9 +366,9 @@ const createRequestChart = () => {
       values.push(item.count)
     })
 
-    // 获取最后一个数据点的时间
+    // 获取最后一个数据点的时间（后端返回秒级时间戳，需要转换为毫秒）
     const lastDataTime = data[data.length - 1].time
-    const lastDataMinute = Math.floor(lastDataTime / 60000) * 60000
+    const lastDataMinute = Math.floor((lastDataTime * 1000) / 60000) * 60000
 
     // 填充中间的空白时间点（如果有的话）
     let currentMinute = lastDataMinute + 60000

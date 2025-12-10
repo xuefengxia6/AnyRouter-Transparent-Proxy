@@ -140,7 +140,7 @@
                 :key="request.request_id"
                 :class="[
                   'p-3 rounded-lg',
-                  request.status.startsWith('2')
+                  request.status === 'success'
                     ? 'bg-gray-50 dark:bg-gray-700'
                     : 'bg-red-50 dark:bg-red-900/20'
                 ]"
@@ -150,7 +150,7 @@
                   <div
                     :class="[
                       'w-2 h-2 rounded-full',
-                      request.status.startsWith('2') ? 'bg-green-500' : 'bg-red-500'
+                      request.status === 'success' ? 'bg-green-500' : 'bg-red-500'
                     ]"
                   />
                   <div>
@@ -169,7 +169,7 @@
                   <span
                     :class="[
                       'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                      request.status.startsWith('2')
+                      request.status === 'success'
                         ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                         : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
                     ]"
@@ -179,7 +179,7 @@
                 </div>
               </div>
               <!-- 错误信息 -->
-              <div v-if="!request.status.startsWith('2') && request.error" class="mt-2 pl-5">
+              <div v-if="request.status !== 'success' && request.error" class="mt-2 pl-5">
                 <p class="text-xs text-red-600 dark:text-red-400 font-mono">
                   {{ request.error }}
                 </p>
@@ -338,9 +338,9 @@ const sortedRecentRequests = computed(() => {
 // 错误请求（从最近请求中过滤出错误请求）
 const errorRequests = computed(() => {
   if (!stats.value?.recent_requests) return []
-  // 过滤出非2xx状态码的请求，并按时间戳倒序排列
+  // 过滤出状态为 'error' 的请求，并按时间戳倒序排列
   return [...stats.value.recent_requests]
-    .filter(request => !request.status.startsWith('2'))
+    .filter(request => request.status === 'error')
     .sort((a, b) => b.timestamp - a.timestamp)
 })
 
@@ -355,9 +355,11 @@ const requestChartData = computed(() => {
   const nextMinute = new Date((Math.floor(now / 60000) + 1) * 60000)
   const nextMinuteTimestamp = nextMinute.getTime()
 
-  // 格式化时间的辅助函数
+  // 格式化时间的辅助函数（支持秒级和毫秒级时间戳）
   const formatTimeLabel = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString('zh-CN', {
+    // 判断是秒级还是毫秒级时间戳
+    const ms = timestamp > 10000000000 ? timestamp : timestamp * 1000
+    return new Date(ms).toLocaleTimeString('zh-CN', {
       hour: '2-digit',
       minute: '2-digit'
     })
@@ -374,9 +376,9 @@ const requestChartData = computed(() => {
       values.push(item.count)
     })
 
-    // 获取最后一个数据点的时间
+    // 获取最后一个数据点的时间（后端返回秒级时间戳，需要转换为毫秒）
     const lastDataTime = data[data.length - 1].time
-    const lastDataMinute = Math.floor(lastDataTime / 60000) * 60000
+    const lastDataMinute = Math.floor((lastDataTime * 1000) / 60000) * 60000
 
     // 填充中间的空白时间点（如果有的话）
     let currentMinute = lastDataMinute + 60000
