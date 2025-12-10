@@ -41,6 +41,9 @@ from .services.proxy import (
     prepare_forward_headers
 )
 
+# 导入编码工具
+from .utils.encoding import ensure_unicode
+
 # 导入 Admin 路由
 from .routers.admin import router as admin_router
 
@@ -206,6 +209,7 @@ async def proxy(path: str, request: Request):
     # 发起上游请求并流式处理响应
     response_time = 0
     bytes_received = 0
+    error_response_content = b""  # 新增：缓存错误响应内容（仅当状态码 >= 400 时）
     try:
         # 构建请求但不使用 context manager
         req = http_client.build_request(
@@ -236,9 +240,13 @@ async def proxy(path: str, request: Request):
         # 异步生成器:流式读取响应内容并统计字节数
         async def iter_response():
             nonlocal bytes_received
+            nonlocal error_response_content
             try:
                 async for chunk in resp.aiter_bytes():
                     bytes_received += len(chunk)
+                    # 如果是错误响应，缓存内容（限制 50KB）
+                    if resp.status_code >= 400 and len(error_response_content) < 50*1024:
+                        error_response_content += chunk
                     yield chunk
             except Exception as e:
                 # 优雅处理客户端断开连接
@@ -269,16 +277,28 @@ async def proxy(path: str, request: Request):
                         request_id
                     )
                 else:
+                    # 使用缓存的响应内容
+                    response_content = ensure_unicode(error_response_content) if error_response_content else None
+                    if DEBUG_MODE:
+                        print(f"[Proxy] Response: {response_content}")
+                    else:
+                        err_content_len = len(error_response_content)
+                        print(f"[Proxy] Response ({err_content_len} bytes): {response_content[:200]}..." if err_content_len > 200 else f"[Proxy] Response: {response_content}")
+
+                    # 记录错误到统计服务
                     await record_request_error(
                         request_id, path, request.method,
                         f"HTTP {resp.status_code}: {resp.reason_phrase}",
-                        response_time
+                        response_time,
+                        response_content  # 新增参数
                     )
+                    # 广播错误日志到 SSE
                     await broadcast_log_message(
                         "ERROR",
                         f"Request failed: {request.method} {path} - {resp.status_code} {resp.reason_phrase}",
                         path,
-                        request_id
+                        request_id,
+                        response_content  # 新增参数
                     )
 
         # 使用 BackgroundTask 在响应完成后关闭连接和记录统计

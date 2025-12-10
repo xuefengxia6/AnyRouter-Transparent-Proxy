@@ -46,6 +46,7 @@ export interface SystemStats {
     response_time: number
     timestamp: number
     error?: string
+    response_content?: string
   }>
 }
 
@@ -57,6 +58,7 @@ export interface ErrorLog {
   timestamp: number
   formatted_time: string
   response_time: number
+  response_content?: string
 }
 
 export interface ErrorLogsResponse {
@@ -100,6 +102,8 @@ export interface LogEntry {
   request_id?: string
   formatted_time: string
   type?: string
+  response_content?: string
+  _expanded?: boolean
 }
 
 // 路由类型

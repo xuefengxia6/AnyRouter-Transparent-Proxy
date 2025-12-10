@@ -224,6 +224,10 @@
                 <div v-if="log.type" class="text-xs text-gray-500 dark:text-gray-400">
                   <span class="font-medium">类型:</span> {{ log.type }}
                 </div>
+                <!-- 错误响应内容（新增） -->
+                <div v-if="log.response_content" class="mt-3">
+                  <pre class="text-xs text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap font-mono">{{ log.response_content }}</pre>
+                </div>
               </div>
             </div>
           </div>
@@ -449,7 +453,13 @@ const handleScroll = () => {
 }
 
 const toggleLogDetail = (log: LogEntry) => {
-  log._expanded = !log._expanded
+  // 使用 map 创建新数组，确保 Vue 的响应式系统能检测到变化
+  logs.value = logs.value.map(item => {
+    if (item === log) {
+      return { ...item, _expanded: !item._expanded }
+    }
+    return item
+  })
 }
 
 const clearLogs = () => {
@@ -479,10 +489,13 @@ const connectSSE = () => {
 
     eventSource.value.onmessage = (event) => {
       try {
-        const logEntry: LogEntry = JSON.parse(event.data)
+        const logData = JSON.parse(event.data)
 
-        // 添加展开状态标记
-        logEntry._expanded = false
+        // 创建新的日志对象，并添加展开状态标记（确保是响应式的）
+        const logEntry: LogEntry = {
+          ...logData,
+          _expanded: false
+        }
 
         // 检查是否已存在相同的日志（避免重复）
         const exists = logs.value.some(log =>

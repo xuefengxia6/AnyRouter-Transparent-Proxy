@@ -82,7 +82,7 @@ async def record_request_success(request_id: str, path: str, method: str, bytes_
         })
 
 
-async def record_request_error(request_id: str, path: str, method: str, error_msg: str, response_time: float = 0):
+async def record_request_error(request_id: str, path: str, method: str, error_msg: str, response_time: float = 0, response_content: str = None):
     """记录请求错误"""
     async with stats_lock:
         request_stats["failed_requests"] += 1
@@ -93,6 +93,7 @@ async def record_request_error(request_id: str, path: str, method: str, error_ms
             "request_id": request_id,
             "path": path,
             "error": error_msg,
+            "response_content": response_content,
             "timestamp": time.time(),
             "response_time": response_time
         })
@@ -104,6 +105,7 @@ async def record_request_error(request_id: str, path: str, method: str, error_ms
             "method": method,
             "status": "error",
             "error": error_msg,
+            "response_content": response_content,
             "response_time": response_time,
             "timestamp": time.time()
         })
@@ -138,7 +140,7 @@ async def update_time_window_stats():
         })
 
 
-async def broadcast_log_message(level: str, message: str, path: str = "", request_id: str = ""):
+async def broadcast_log_message(level: str, message: str, path: str = "", request_id: str = "", response_content: str = None):
     """广播日志消息到所有订阅者"""
     log_entry = {
         "timestamp": time.time(),
@@ -146,7 +148,8 @@ async def broadcast_log_message(level: str, message: str, path: str = "", reques
         "message": message,
         "path": path,
         "request_id": request_id,
-        "formatted_time": datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H:%M:%S")
+        "formatted_time": datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H:%M:%S"),
+        "response_content": response_content
     }
 
     try:

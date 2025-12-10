@@ -235,6 +235,10 @@
               <p class="text-xs text-red-600 dark:text-red-400 font-mono">
                 {{ request.error }}
               </p>
+              <!-- 错误响应内容（新增） -->
+              <div v-if="request.response_content" class="mt-3">
+                <pre class="text-xs text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap font-mono">{{ request.response_content }}</pre>
+              </div>
             </div>
           </div>
         </div>

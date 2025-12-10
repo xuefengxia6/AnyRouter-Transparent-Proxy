@@ -289,7 +289,8 @@ async def get_errors(
                 "error": error["error"],
                 "timestamp": error["timestamp"],
                 "formatted_time": datetime.fromtimestamp(error["timestamp"]).strftime("%Y-%m-%d %H:%M:%S"),
-                "response_time": round(error["response_time"] * 1000, 2)  # 毫秒
+                "response_time": round(error["response_time"] * 1000, 2),  # 毫秒
+                "response_content": error.get("response_content")  # 添加响应内容
             })
 
         # 计算错误统计
