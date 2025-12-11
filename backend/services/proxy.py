@@ -40,7 +40,14 @@ def filter_request_headers(headers: Iterable[tuple]) -> dict:
         # 因为我们可能会修改请求体，导致长度改变
         if lk == "content-length":
             continue
+        # 移除 Accept-Encoding，后续会显式设置为 identity
+        # 避免代理转发压缩内容时出现 ZlibError（客户端解压已解压内容）
+        if lk == "accept-encoding":
+            continue
         out[k] = v
+    # 显式设置 Accept-Encoding 为 identity，强制上游返回未压缩内容
+    # 仅移除原有头部不够，httpx 会默认补充 gzip, deflate, br
+    out["Accept-Encoding"] = "identity"
     return out
 
 
@@ -62,6 +69,10 @@ def filter_response_headers(headers: Iterable[tuple]) -> dict:
         # 移除 Content-Length，避免流式响应时长度不匹配
         # StreamingResponse 会自动处理传输编码
         if lk == "content-length":
+            continue
+        # 移除 Content-Encoding，防止客户端尝试解压已解压的内容
+        # httpx 可能已经自动解压了响应，但头部仍保留压缩标识
+        if lk == "content-encoding":
             continue
         out[k] = v
     return out
