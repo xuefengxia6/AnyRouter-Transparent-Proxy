@@ -126,7 +126,23 @@ export const configApi = {
 export const statsApi = {
   // 获取系统统计
   async getStats(timeRange?: string): Promise<SystemStats> {
-    const searchParams = timeRange ? { time_range: timeRange } : undefined
+    const searchParams: Record<string, string | number> = {}
+
+    if (timeRange) {
+      const match = /^(\d+)([mh])$/i.exec(timeRange)
+      const nowSeconds = Math.floor(Date.now() / 1000)
+      if (match) {
+        const value = Number(match[1])
+        const unit = match[2].toLowerCase()
+        const offsetSeconds = unit === 'm' ? value * 60 : value * 3600
+        searchParams.end_time = nowSeconds
+        searchParams.start_time = nowSeconds - offsetSeconds
+      } else {
+        // 兼容未匹配格式，直接透传
+        searchParams.time_range = timeRange
+      }
+    }
+
     const response = await api.get('admin/stats', {
       searchParams
     }).json<SystemStats>()

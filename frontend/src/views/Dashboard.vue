@@ -7,27 +7,27 @@
           系统仪表板
         </h1>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          实时监控 AnyRouter 代理服务状态
+          实时监控代理服务状态
         </p>
       </div>
-      <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-1 sm:space-x-2">
         <span
           v-if="lastUpdated"
-          class="text-sm text-gray-500 dark:text-gray-400"
+          class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap text-right leading-tight"
         >
           最后更新: {{ formatTime(lastUpdated) }}
         </span>
         <button
-          @click="refreshData"
-          :disabled="loading"
+          @click="refreshData({ manual: true })"
+          :disabled="manualRefreshing"
           aria-label="刷新"
-          class="relative h-10 w-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-300 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+          class="relative h-9 w-9 sm:h-10 sm:w-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-300 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <!-- 刷新图标 -->
           <svg
             :class="[
               'h-5 w-5 text-white transition-transform duration-500',
-              loading ? 'animate-spin' : ''
+              manualRefreshing ? 'animate-spin' : ''
             ]"
             fill="currentColor"
             viewBox="0 0 20 20"
@@ -154,7 +154,7 @@
           <select
             v-model="selectedTimeRange"
             @change="handleTimeRangeChange"
-            class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
+            class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md px-3 py-2 focus:outline-none focus:ring-0 focus:border-gray-300 dark:focus:border-gray-600 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-none"
           >
             <option value="1h">最近 1 小时</option>
             <option value="6h">最近 6 小时</option>
@@ -291,10 +291,11 @@ const selectedTimeRange = ref('1h')
 let requestChartInstance: Chart | null = null
 
 // 使用实时统计数据
-const { stats, loading, error, lastUpdated, loadStats } = useRealtimeStats({
-  interval: 5000,
+const { stats, error, lastUpdated, loadStats } = useRealtimeStats({
+  interval: 1000,
   autoRefresh: true
 })
+const manualRefreshing = ref(false)
 
 // 计算属性
 const recentRequests = computed(() => {
@@ -337,6 +338,16 @@ const formatChartTime = (timestamp: number | string): string => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+// 将时间范围字符串转换为秒，默认 1 小时
+const parseTimeRangeSeconds = (range?: string): number => {
+  if (!range) return 3600
+  const match = /^(\d+)([mh])$/i.exec(range)
+  if (!match) return 3600
+  const value = Number(match[1])
+  const unit = match[2].toLowerCase()
+  return unit === 'm' ? value * 60 : value * 3600
 }
 
 const formatPercentage = (value: number | undefined): string => {
@@ -389,42 +400,28 @@ const createRequestChart = () => {
   if (!ctx) return
 
   const data = stats.value.time_series.requests_per_minute || []
+  const rangeSeconds = parseTimeRangeSeconds(selectedTimeRange.value)
 
-  // 计算下一个整分钟的时间，作为 X 轴的最大值
+  // 计算时间范围（按分钟对齐）
   const now = Date.now()
-  const nextMinute = new Date((Math.floor(now / 60000) + 1) * 60000)
-  const nextMinuteTimestamp = nextMinute.getTime()
+  const endMinute = Math.ceil(now / 60000) * 60000
+  const startMinute = endMinute - rangeSeconds * 1000
 
-  // 构建标签和数据数组，填充中间的空白时间点以确保 X 轴连续
+  // 将后端数据映射到分钟 -> 数值
+  const dataMap = new Map<number, number>()
+  data.forEach(item => {
+    const ms = item.time > 10000000000 ? item.time : item.time * 1000
+    // 对齐到分钟
+    const minuteTs = Math.floor(ms / 60000) * 60000
+    dataMap.set(minuteTs, item.count)
+  })
+
+  // 构建完整的时间轴，填充缺失分钟
   const labels: string[] = []
   const values: (number | null)[] = []
-
-  if (data.length > 0) {
-    // 添加后端数据
-    data.forEach(item => {
-      labels.push(formatChartTime(item.time))
-      values.push(item.count)
-    })
-
-    // 获取最后一个数据点的时间（后端返回秒级时间戳，需要转换为毫秒）
-    const lastDataTime = data[data.length - 1].time
-    const lastDataMinute = Math.floor((lastDataTime * 1000) / 60000) * 60000
-
-    // 填充中间的空白时间点（如果有的话）
-    let currentMinute = lastDataMinute + 60000
-    while (currentMinute < nextMinuteTimestamp) {
-      labels.push(formatChartTime(currentMinute))
-      values.push(null)
-      currentMinute += 60000
-    }
-
-    // 添加下一分钟的时间点
-    labels.push(formatChartTime(nextMinuteTimestamp))
-    values.push(null)
-  } else {
-    // 如果没有数据，只添加下一分钟的时间点
-    labels.push(formatChartTime(nextMinuteTimestamp))
-    values.push(null)
+  for (let ts = startMinute; ts <= endMinute; ts += 60000) {
+    labels.push(formatChartTime(ts))
+    values.push(dataMap.get(ts) ?? null)
   }
 
   // 如果图表已存在，只更新数据，避免重建导致跳动
@@ -497,12 +494,20 @@ const updateCharts = () => {
 }
 
 // 刷新数据
-const refreshData = async () => {
+const refreshData = async (options: { manual?: boolean } = {}) => {
+  const isManual = options.manual === true
+  if (isManual) {
+    manualRefreshing.value = true
+  }
   try {
     await loadStats(selectedTimeRange.value)
     updateCharts()
   } catch (error) {
     console.error('刷新数据失败:', error)
+  } finally {
+    if (isManual) {
+      manualRefreshing.value = false
+    }
   }
 }
 

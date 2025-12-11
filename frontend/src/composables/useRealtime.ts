@@ -288,6 +288,7 @@ export function useRealtimeStats(options: {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const lastUpdated = ref<number>(0)
+  const currentTimeRange = ref<string | undefined>(undefined)
 
   // 配置
   const interval = ref(options.interval || 5000) // 5秒刷新
@@ -307,7 +308,9 @@ export function useRealtimeStats(options: {
     error.value = null
 
     try {
-      await statsStore.loadStats(timeRange)
+      const rangeToUse = typeof timeRange === 'string' ? timeRange : currentTimeRange.value
+      await statsStore.loadStats(rangeToUse)
+      currentTimeRange.value = rangeToUse
       lastUpdated.value = Date.now()
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载统计数据失败'
@@ -331,7 +334,7 @@ export function useRealtimeStats(options: {
 
     refreshTimer = window.setInterval(() => {
       if (autoRefresh.value && !document.hidden) {
-        loadStats().catch(console.error)
+        loadStats(currentTimeRange.value).catch(console.error)
       }
     }, interval.value)
   }
@@ -347,7 +350,7 @@ export function useRealtimeStats(options: {
 
   // 强制刷新
   const forceRefresh = () => {
-    return loadStats()
+    return loadStats(currentTimeRange.value)
   }
 
   // 组件卸载时清理
