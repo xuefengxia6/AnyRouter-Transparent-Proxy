@@ -40,14 +40,13 @@ ENV PYTHONUNBUFFERED=1 \
 ARG PORT=8088
 ENV PORT=${PORT}
 
-# 配置 apt 镜像源
-# 检查 /etc/apt/sources.list 是否存在，如果不存在则创建一个新的
-RUN test -e /etc/apt/sources.list || echo "deb http://mirrors.aliyun.com/debian bookworm main" > /etc/apt/sources.list && \
-    echo "deb-src http://mirrors.aliyun.com/debian bookworm main" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/debian-security bookworm-security main" >> /etc/apt/sources.list && \
-    echo "deb-src http://mirrors.aliyun.com/debian-security bookworm-security main" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/debian bookworm-updates main" >> /etc/apt/sources.list && \
-    echo "deb-src http://mirrors.aliyun.com/debian bookworm-updates main" >> /etc/apt/sources.list
+# 配置 apt 镜像源（国内部署时取消注释）
+# RUN test -e /etc/apt/sources.list || echo "deb http://mirrors.aliyun.com/debian bookworm main" > /etc/apt/sources.list && \
+#     echo "deb-src http://mirrors.aliyun.com/debian bookworm main" >> /etc/apt/sources.list && \
+#     echo "deb http://mirrors.aliyun.com/debian-security bookworm-security main" >> /etc/apt/sources.list && \
+#     echo "deb-src http://mirrors.aliyun.com/debian-security bookworm-security main" >> /etc/apt/sources.list && \
+#     echo "deb http://mirrors.aliyun.com/debian bookworm-updates main" >> /etc/apt/sources.list && \
+#     echo "deb-src http://mirrors.aliyun.com/debian bookworm-updates main" >> /etc/apt/sources.list
 # 安装系统依赖（优化镜像大小）
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -61,8 +60,8 @@ RUN useradd --create-home --shell /bin/bash appuser
 # 复制 Python 依赖文件
 COPY backend/requirements.txt .
 
-# 使用 Pip 清华源
-RUN pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+# 使用 Pip 清华源（国内部署时取消注释）
+# RUN pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 # 安装 Python 依赖
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
