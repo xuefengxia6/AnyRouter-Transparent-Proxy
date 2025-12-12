@@ -5,7 +5,7 @@ AnyRouter 透明代理 - 主应用模块
 """
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from contextlib import asynccontextmanager
 from starlette.background import BackgroundTask
 import httpx
@@ -164,6 +164,20 @@ async def health_check():
     }
 
 
+@app.api_route("/", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+async def root_redirect(request: Request):
+    """
+    根路径：浏览器访问时重定向到 /admin，API 访问保持代理行为
+    """
+    accept_header = request.headers.get("accept", "")
+    wants_html = "text/html" in accept_header or "application/xhtml+xml" in accept_header
+
+    if wants_html:
+        return RedirectResponse(url="/admin", status_code=307)
+
+    return await proxy("", request)
+
+
 # ===== 主代理逻辑 =====
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
@@ -269,7 +283,14 @@ async def proxy(path: str, request: Request):
             await resp.aclose()
             if request_id:
                 if resp.status_code < 400:
-                    await record_request_success(request_id, path, request.method, bytes_received, response_time)
+                    await record_request_success(
+                        request_id,
+                        path,
+                        request.method,
+                        bytes_received,
+                        response_time,
+                        resp.status_code
+                    )
                     await broadcast_log_message(
                         "INFO",
                         f"Request completed: {request.method} {path} - {resp.status_code} ({bytes_received} bytes, {response_time*1000:.1f}ms)",
@@ -287,10 +308,13 @@ async def proxy(path: str, request: Request):
 
                     # 记录错误到统计服务
                     await record_request_error(
-                        request_id, path, request.method,
+                        request_id,
+                        path,
+                        request.method,
                         f"HTTP {resp.status_code}: {resp.reason_phrase}",
                         response_time,
-                        response_content  # 新增参数
+                        response_content,  # 新增参数
+                        resp.status_code
                     )
                     # 广播错误日志到 SSE
                     await broadcast_log_message(
@@ -312,7 +336,15 @@ async def proxy(path: str, request: Request):
     except httpx.RequestError as e:
         # 记录请求错误
         if request_id:
-            await record_request_error(request_id, path, request.method, str(e), time.time() - start_time)
+            await record_request_error(
+                request_id,
+                path,
+                request.method,
+                str(e),
+                time.time() - start_time,
+                None,
+                502
+            )
             await broadcast_log_message(
                 "ERROR",
                 f"Upstream request failed: {request.method} {path} - {str(e)}",

@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import time
+import mimetypes
 from datetime import datetime
 from typing import Optional
 
@@ -43,6 +44,20 @@ from ..services.stats import (
     log_storage,
     clear_all_logs
 )
+
+def _normalize_status_code(entry: dict) -> dict:
+    """确保 status_code 为数字，避免前端出现 "--" 与错误颜色不一致"""
+    status_code = entry.get("status_code")
+    # 保留原始值，便于调试定位
+    entry["status_code_raw"] = status_code
+
+    if isinstance(status_code, str):
+        try:
+            entry["status_code"] = int(status_code)
+        except ValueError:
+            # 转换失败时保留 None，让上层按未知处理，但 raw 里还能看到来源
+            entry["status_code"] = None
+    return entry
 
 # 创建路由器
 router = APIRouter()
@@ -106,18 +121,13 @@ async def admin_static(path: str = ""):
 
     # 返回文件内容
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        # 二进制读取，避免图片/图标被错误解码
+        with open(file_path, 'rb') as f:
             content = f.read()
 
-        # 根据文件扩展名设置 Content-Type
-        if file_path.endswith('.html'):
-            return Response(content=content, media_type="text/html")
-        elif file_path.endswith('.css'):
-            return Response(content=content, media_type="text/css")
-        elif file_path.endswith('.js'):
-            return Response(content=content, media_type="application/javascript")
-        else:
-            return Response(content=content)
+        # 猜测 MIME 类型，保证图标与二进制资源的正确 Content-Type
+        mime_type, _ = mimetypes.guess_type(file_path)
+        return Response(content=content, media_type=mime_type or "application/octet-stream")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading file: {e}")
@@ -201,14 +211,27 @@ async def get_stats(
     """获取系统统计信息"""
     try:
         filtered_requests, filtered_errors, filtered_time_series = await get_time_filtered_data(start_time, end_time)
+        normalized_requests = [_normalize_status_code(dict(req)) for req in filtered_requests]
 
         # 计算基本统计
-        total_filtered_requests = len(filtered_requests)
-        successful_filtered_requests = len([r for r in filtered_requests if r["status"] == "success"])
-        error_filtered_requests = len([r for r in filtered_requests if r["status"] == "error"])
+        total_filtered_requests = len(normalized_requests)
+        successful_filtered_requests = len([
+            r for r in normalized_requests
+            if (
+                (r.get("status_code") is not None and r.get("status_code", 0) < 400) or
+                (r.get("status_code") is None and r.get("status") != "error")
+            )
+        ])
+        error_filtered_requests = len([
+            r for r in normalized_requests
+            if (
+                (r.get("status_code") is not None and r.get("status_code", 0) >= 400) or
+                r.get("status") == "error"
+            )
+        ])
 
         # 计算响应时间统计
-        response_times = [r["response_time"] * 1000 for r in filtered_requests if r["response_time"] > 0]  # 转换为毫秒
+        response_times = [r["response_time"] * 1000 for r in normalized_requests if r["response_time"] > 0]  # 转换为毫秒
         response_time_stats = calculate_percentiles(response_times, [50, 95, 99])
 
         # 计算QPS（每秒请求数）
@@ -216,7 +239,7 @@ async def get_stats(
         qps = total_filtered_requests / time_range if time_range > 0 else 0
 
         # 计算总字节数
-        total_bytes_sent = sum(r.get("bytes", 0) for r in filtered_requests)
+        total_bytes_sent = sum(r.get("bytes", 0) for r in normalized_requests)
 
         # 获取路径统计
         path_stats_filtered = {}
@@ -255,7 +278,7 @@ async def get_stats(
             },
             "time_series": filtered_time_series,
             "top_paths": dict(top_paths),
-            "recent_requests": filtered_requests[-limit:] if limit > 0 else filtered_requests
+            "recent_requests": normalized_requests[-limit:] if limit > 0 else normalized_requests
         }
 
     except Exception as e:

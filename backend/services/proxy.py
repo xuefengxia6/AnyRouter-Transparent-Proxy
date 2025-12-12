@@ -70,8 +70,8 @@ def filter_response_headers(headers: Iterable[tuple]) -> dict:
         # StreamingResponse 会自动处理传输编码
         if lk == "content-length":
             continue
-        # 移除 Content-Encoding，防止客户端尝试解压已解压的内容
-        # httpx 可能已经自动解压了响应，但头部仍保留压缩标识
+        # 移除 Content-Encoding，httpx 会自动解压 gzip/deflate
+        # 保留此头部会导致客户端重复解压，引发 ZlibError
         if lk == "content-encoding":
             continue
         out[k] = v
