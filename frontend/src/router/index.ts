@@ -28,14 +28,6 @@ const routes = [
     meta: {
       title: '监控中心'
     }
-  },
-  {
-    path: '/logs',
-    name: 'Logs',
-    component: () => import('@/views/Logs.vue'),
-    meta: {
-      title: '日志查看'
-    }
   }
 ]
 

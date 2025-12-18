@@ -1,7 +1,6 @@
 import { ref, onUnmounted, computed } from 'vue'
-import { useLogsStore, useStatsStore } from '@/stores'
-import { logsApi, statsApi } from '@/services/api'
-import type { LogEntry } from '@/types'
+import { useStatsStore } from '@/stores'
+import { statsApi } from '@/services/api'
 
 // 连接状态枚举
 export const ConnectionState = {
@@ -13,271 +12,6 @@ export const ConnectionState = {
 } as const
 
 export type ConnectionState = typeof ConnectionState[keyof typeof ConnectionState]
-
-// 重连配置
-interface ReconnectConfig {
-  maxRetries: number
-  initialDelay: number
-  maxDelay: number
-  backoffFactor: number
-}
-
-// 实时数据配置
-interface RealtimeConfig {
-  autoReconnect?: boolean
-  reconnectConfig?: ReconnectConfig
-  heartbeatInterval?: number
-}
-
-// 默认重连配置
-const DEFAULT_RECONNECT_CONFIG: ReconnectConfig = {
-  maxRetries: 10,
-  initialDelay: 1000,
-  maxDelay: 30000,
-  backoffFactor: 2
-}
-
-// 日志流组合函数
-export function useLogStream(options: {
-  level?: LogEntry['level'][]
-  search?: string
-  config?: RealtimeConfig
-} = {}) {
-  // 状态
-  const connectionState = ref<ConnectionState>(ConnectionState.DISCONNECTED)
-  const error = ref<string | null>(null)
-  const retryCount = ref(0)
-  const lastConnected = ref<number>(0)
-
-  // 配置
-  const config = ref<RealtimeConfig>({
-    autoReconnect: true,
-    reconnectConfig: DEFAULT_RECONNECT_CONFIG,
-    heartbeatInterval: 30000,
-    ...options.config
-  })
-
-  // Store
-  const logsStore = useLogsStore()
-
-  // EventSource 实例
-  let eventSource: EventSource | null = null
-  let reconnectTimer: number | null = null
-  let heartbeatTimer: number | null = null
-
-  // 计算属性
-  const isConnected = computed(() => connectionState.value === ConnectionState.CONNECTED)
-  const isConnecting = computed(() =>
-    connectionState.value === ConnectionState.CONNECTING ||
-    connectionState.value === ConnectionState.RECONNECTING
-  )
-  const hasError = computed(() => connectionState.value === ConnectionState.ERROR)
-
-  // 计算重连延迟
-  const calculateReconnectDelay = (retryNumber: number): number => {
-    const { initialDelay, maxDelay, backoffFactor } = config.value.reconnectConfig!
-    const delay = initialDelay * Math.pow(backoffFactor, retryNumber)
-    return Math.min(delay, maxDelay)
-  }
-
-  // 清理连接
-  const cleanup = () => {
-    if (eventSource) {
-      eventSource.close()
-      eventSource = null
-    }
-
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
-
-    if (heartbeatTimer) {
-      clearInterval(heartbeatTimer)
-      heartbeatTimer = null
-    }
-  }
-
-  // 处理连接打开
-  const handleOpen = () => {
-    console.log('[LogStream] 连接已建立')
-    connectionState.value = ConnectionState.CONNECTED
-    error.value = null
-    retryCount.value = 0
-    lastConnected.value = Date.now()
-
-    // 启动心跳检测
-    startHeartbeat()
-  }
-
-  // 处理连接错误
-  const handleError = (event: Event) => {
-    console.error('[LogStream] 连接错误:', event)
-
-    if (connectionState.value === ConnectionState.CONNECTED) {
-      // 连接中断，尝试重连
-      connectionState.value = ConnectionState.ERROR
-      error.value = '连接意外中断'
-
-      if (config.value.autoReconnect) {
-        scheduleReconnect()
-      }
-    }
-  }
-
-  // 处理消息接收
-  const handleMessage = (event: MessageEvent) => {
-    try {
-      const log: LogEntry = JSON.parse(event.data)
-      logsStore.addLog(log)
-    } catch (err) {
-      console.error('[LogStream] 解析日志消息失败:', err)
-    }
-  }
-
-  // 处理心跳
-  const handleHeartbeat = () => {
-    // 心跳响应，连接正常
-    console.debug('[LogStream] 心跳响应')
-  }
-
-  // 启动心跳检测
-  const startHeartbeat = () => {
-    if (heartbeatTimer) {
-      clearInterval(heartbeatTimer)
-    }
-
-    heartbeatTimer = window.setInterval(() => {
-      if (eventSource?.readyState === EventSource.OPEN) {
-        // 连接正常，发送心跳（如果支持的话）
-        console.debug('[LogStream] 心跳检测')
-      } else {
-        console.warn('[LogStream] 心跳检测失败，触发重连')
-        connectionState.value = ConnectionState.ERROR
-        if (config.value.autoReconnect) {
-          scheduleReconnect()
-        }
-      }
-    }, config.value.heartbeatInterval!)
-  }
-
-  // 安排重连
-  const scheduleReconnect = () => {
-    const { maxRetries } = config.value.reconnectConfig!
-
-    if (retryCount.value >= maxRetries) {
-      console.error('[LogStream] 已达到最大重试次数，停止重连')
-      connectionState.value = ConnectionState.ERROR
-      error.value = `连接失败，已重试 ${maxRetries} 次`
-      return
-    }
-
-    const delay = calculateReconnectDelay(retryCount.value)
-
-    console.log(`[LogStream] 将在 ${delay}ms 后进行第 ${retryCount.value + 1} 次重连`)
-
-    connectionState.value = ConnectionState.RECONNECTING
-    error.value = `正在重连... (${retryCount.value + 1}/${maxRetries})`
-
-    reconnectTimer = window.setTimeout(() => {
-      retryCount.value++
-      connect()
-    }, delay)
-  }
-
-  // 建立连接
-  const connect = () => {
-    if (eventSource) {
-      cleanup()
-    }
-
-    console.log('[LogStream] 正在建立连接...')
-    connectionState.value = ConnectionState.CONNECTING
-
-    try {
-      eventSource = logsApi.createLogStream({
-        level: options.level,
-        search: options.search
-      })
-
-      eventSource.addEventListener('open', handleOpen)
-      eventSource.addEventListener('error', handleError)
-      eventSource.addEventListener('message', handleMessage)
-      eventSource.addEventListener('heartbeat', handleHeartbeat)
-
-      // 监听特定日志级别
-      if (options.level?.length) {
-        options.level.forEach(level => {
-          eventSource?.addEventListener(level.toLowerCase(), handleMessage)
-        })
-      }
-    } catch (err) {
-      console.error('[LogStream] 创建连接失败:', err)
-      connectionState.value = ConnectionState.ERROR
-      error.value = err instanceof Error ? err.message : '创建连接失败'
-
-      if (config.value.autoReconnect) {
-        scheduleReconnect()
-      }
-    }
-  }
-
-  // 断开连接
-  const disconnect = () => {
-    console.log('[LogStream] 断开连接')
-    cleanup()
-    connectionState.value = ConnectionState.DISCONNECTED
-  }
-
-  // 手动重连
-  const reconnect = () => {
-    retryCount.value = 0
-    error.value = null
-    connect()
-  }
-
-  // 更新过滤器
-  const updateFilters = (filters: {
-    level?: LogEntry['level'][]
-    search?: string
-  }) => {
-    // 更新选项
-    Object.assign(options, filters)
-
-    // 如果连接正常，重新连接以应用新过滤器
-    if (isConnected.value) {
-      disconnect()
-      connect()
-    }
-  }
-
-  // 组件卸载时清理
-  onUnmounted(() => {
-    cleanup()
-  })
-
-  // 初始化连接
-  if (typeof window !== 'undefined') {
-    connect()
-  }
-
-  return {
-    // 状态
-    connectionState,
-    error,
-    retryCount,
-    lastConnected,
-    // 计算属性
-    isConnected,
-    isConnecting,
-    hasError,
-    // 方法
-    connect,
-    disconnect,
-    reconnect,
-    updateFilters
-  }
-}
 
 // 实时统计数据组合函数
 export function useRealtimeStats(options: {
@@ -305,13 +39,15 @@ export function useRealtimeStats(options: {
     if (loading.value) return
 
     loading.value = true
-    error.value = null
+    // 注意：不在开头清空 error，只在加载成功时清空，避免错误提示闪烁
 
     try {
       const rangeToUse = typeof timeRange === 'string' ? timeRange : currentTimeRange.value
       await statsStore.loadStats(rangeToUse)
       currentTimeRange.value = rangeToUse
       lastUpdated.value = Date.now()
+      // 只在加载成功时清空错误状态
+      error.value = null
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载统计数据失败'
       console.error('[RealtimeStats] 加载失败:', err)

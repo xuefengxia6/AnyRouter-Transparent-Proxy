@@ -27,12 +27,6 @@ SYSTEM_PROMPT_REPLACEMENT = os.getenv("SYSTEM_PROMPT_REPLACEMENT")  # 例如: "�
 # 通过环境变量 SYSTEM_PROMPT_BLOCK_INSERT_IF_NOT_EXIST 配置，默认为 false
 SYSTEM_PROMPT_BLOCK_INSERT_IF_NOT_EXIST = os.getenv("SYSTEM_PROMPT_BLOCK_INSERT_IF_NOT_EXIST", "false").lower() in ("true", "1", "yes")
 
-# 日志持久化配置
-LOG_PERSISTENCE_ENABLED = os.getenv("LOG_PERSISTENCE_ENABLED", "true").lower() in ("true", "1", "yes")
-LOG_STORAGE_PATH = os.getenv("LOG_STORAGE_PATH", "data/logs")
-LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
-LOG_DAILY_LIMIT = int(os.getenv("LOG_DAILY_LIMIT", "1000"))
-
 # 关键字常量定义
 # 用于判断是否需要执行替换操作
 CLAUDE_CODE_KEYWORD = "Claude Code"

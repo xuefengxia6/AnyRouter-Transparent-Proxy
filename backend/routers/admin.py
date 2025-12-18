@@ -26,23 +26,15 @@ from ..config import (
     SYSTEM_PROMPT_BLOCK_INSERT_IF_NOT_EXIST,
     DEBUG_MODE,
     PORT,
-    CUSTOM_HEADERS,
-    LOG_PERSISTENCE_ENABLED
+    CUSTOM_HEADERS
 )
 from ..services.stats import (
     request_stats,
     path_stats,
     stats_lock,
-    log_subscribers,
-    log_queue,
     format_bytes,
     calculate_percentiles,
-    get_time_filtered_data,
-    broadcast_log_message,
-    query_persisted_logs,
-    get_recent_persisted_logs,
-    log_storage,
-    clear_all_logs
+    get_time_filtered_data
 )
 
 def _normalize_status_code(entry: dict) -> dict:
@@ -219,7 +211,7 @@ async def get_stats(
             r for r in normalized_requests
             if (
                 (r.get("status_code") is not None and r.get("status_code", 0) < 400) or
-                (r.get("status_code") is None and r.get("status") != "error")
+                (r.get("status_code") is None and r.get("status") not in ("error", "pending"))
             )
         ])
         error_filtered_requests = len([
@@ -350,192 +342,3 @@ async def get_errors(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取错误信息失败: {str(e)}")
-
-
-@router.get("/api/admin/logs/history")
-async def get_history_logs(
-    authenticated: bool = Depends(verify_dashboard_api_key),
-    start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None,
-    level: Optional[str] = None,
-    path_filter: Optional[str] = None,
-    limit: int = Query(default=200, ge=1, le=1000),
-    offset: int = Query(default=0, ge=0)
-):
-    """获取持久化历史日志"""
-    if not LOG_PERSISTENCE_ENABLED or not log_storage:
-        raise HTTPException(status_code=503, detail="Log persistence is disabled")
-
-    try:
-        logs, total = await query_persisted_logs(
-            start_time=start_time,
-            end_time=end_time,
-            level=level,
-            path_filter=path_filter,
-            limit=limit,
-            offset=offset
-        )
-
-        return {
-            "logs": logs,
-            "pagination": {
-                "total": total,
-                "limit": limit,
-                "offset": offset,
-                "has_more": offset + limit < total
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取历史日志失败: {str(e)}")
-
-
-@router.post("/api/admin/logs/clear")
-async def clear_logs(authenticated: bool = Depends(verify_dashboard_api_key)):
-    """清空后端日志（持久化与内存队列）"""
-    try:
-        await clear_all_logs()
-        return {"success": True, "message": "日志已清空"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"清空日志失败: {str(e)}")
-
-
-@router.get("/api/admin/logs/stream")
-async def stream_logs(
-    authenticated: bool = Depends(verify_dashboard_api_key),
-    level_filter: Optional[str] = None,
-    path_filter: Optional[str] = None
-):
-    """实时日志流SSE端点"""
-
-    async def event_generator():
-        # 为这个连接创建专用队列
-        subscriber_queue = asyncio.Queue(maxsize=100)
-        log_subscribers.add(subscriber_queue)
-
-        try:
-            # 发送连接确认消息
-            yield json.dumps({
-                "type": "connection",
-                "message": "Connected to log stream",
-                "timestamp": time.time(),
-                "formatted_time": datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H:%M:%S")
-            }, ensure_ascii=False)
-
-            # 发送最近的历史日志（最近20条）
-            try:
-                recent_logs = []
-                use_storage_history = False
-
-                if LOG_PERSISTENCE_ENABLED and log_storage:
-                    try:
-                        recent_logs = await get_recent_persisted_logs(limit=50)
-                        use_storage_history = bool(recent_logs)
-                    except Exception as storage_error:
-                        print(f"[Log Stream] Failed to load persisted history: {storage_error}")
-
-                if not recent_logs:
-                    # 从log_queue获取最近的消息
-                    temp_queue = asyncio.Queue()
-
-                    # 获取队列中的现有消息
-                    while not log_queue.empty():
-                        try:
-                            log_entry = await asyncio.wait_for(log_queue.get_nowait(), timeout=0.1)
-                            recent_logs.append(log_entry)
-                            await temp_queue.put(log_entry)
-                        except asyncio.TimeoutError:
-                            break
-
-                    # 恢复队列
-                    while not temp_queue.empty():
-                        await log_queue.put(await temp_queue.get_nowait())
-
-                # 存储返回的顺序为新->旧，需翻转为旧->新
-                if use_storage_history:
-                    recent_logs = list(reversed(recent_logs))
-
-                filtered_recent_logs = []
-                for log_entry in recent_logs:
-                    if level_filter and log_entry.get("level") != level_filter.upper():
-                        continue
-                    if path_filter and path_filter.lower() not in log_entry.get("path", "").lower():
-                        continue
-                    filtered_recent_logs.append(log_entry)
-
-                for log_entry in filtered_recent_logs[-20:]:
-                    yield json.dumps(log_entry, ensure_ascii=False)
-
-            except Exception as e:
-                print(f"[Log Stream] Error sending historical logs: {e}")
-
-            # 持续监听新日志
-            while True:
-                try:
-                    # 等待新日志消息
-                    log_entry = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
-
-                    # 应用过滤器
-                    if level_filter and log_entry.get("level") != level_filter.upper():
-                        continue
-                    if path_filter and path_filter.lower() not in log_entry.get("path", "").lower():
-                        continue
-
-                    # 发送日志消息
-                    yield json.dumps(log_entry, ensure_ascii=False)
-
-                except asyncio.TimeoutError:
-                    # 发送心跳消息保持连接
-                    yield json.dumps({
-                        "type": "heartbeat",
-                        "timestamp": time.time(),
-                        "formatted_time": datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H:%M:%S")
-                    }, ensure_ascii=False)
-
-                except Exception as e:
-                    print(f"[Log Stream] Error in event generator: {e}")
-                    break
-
-        finally:
-            # 清理订阅者
-            log_subscribers.discard(subscriber_queue)
-            print(f"[Log Stream] Subscriber disconnected, remaining: {len(log_subscribers)}")
-
-    return EventSourceResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Cache-Control"
-        }
-    )
-
-
-@router.post("/api/admin/logs/broadcast")
-async def broadcast_log(
-    log_data: dict,
-    authenticated: bool = Depends(verify_dashboard_api_key)
-):
-    """广播自定义日志消息（用于测试或手动日志）"""
-    try:
-        level = log_data.get("level", "INFO").upper()
-        message = log_data.get("message", "")
-        path = log_data.get("path", "")
-        request_id = log_data.get("request_id", "")
-
-        if not message:
-            raise HTTPException(status_code=400, detail="Message is required")
-
-        await broadcast_log_message(level, message, path, request_id)
-
-        return {
-            "success": True,
-            "message": "Log message broadcasted successfully",
-            "timestamp": time.time()
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to broadcast log: {str(e)}")

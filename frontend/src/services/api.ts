@@ -3,9 +3,7 @@ import type {
   SystemStats,
   ErrorLogsResponse,
   SystemConfig,
-  ConfigUpdateRequest,
-  LogEntry,
-  LogHistoryResponse
+  ConfigUpdateRequest
 } from '@/types'
 
 // API 配置
@@ -165,64 +163,6 @@ export const statsApi = {
       searchParams
     }).json<ErrorLogsResponse>()
     return response
-  }
-}
-
-// 日志流 API
-export const logsApi = {
-  // 创建日志流 SSE 连接
-  createLogStream(options: {
-    level?: LogEntry['level'][]
-    search?: string
-  } = {}): EventSource {
-    const searchParams = new URLSearchParams()
-
-    if (options.level?.length) {
-      searchParams.set('level', options.level.join(','))
-    }
-
-    if (options.search) {
-      searchParams.set('search', options.search)
-    }
-
-    const token = getAuthToken()
-    if (token) {
-      searchParams.set('token', token)
-    }
-
-    const url = `${API_BASE_URL}/admin/logs/stream?${searchParams.toString()}`
-
-    return new EventSource(url, {
-      withCredentials: true
-    })
-  },
-
-  // 获取历史日志
-  async getHistoryLogs(params: {
-    start_time?: string
-    end_time?: string
-    level?: string
-    path_filter?: string
-    limit?: number
-    offset?: number
-  } = {}): Promise<LogHistoryResponse> {
-    const searchParams: Record<string, string> = {}
-
-    if (params.start_time) searchParams.start_time = params.start_time
-    if (params.end_time) searchParams.end_time = params.end_time
-    if (params.level) searchParams.level = params.level
-    if (params.path_filter) searchParams.path_filter = params.path_filter
-    if (typeof params.limit === 'number') searchParams.limit = params.limit.toString()
-    if (typeof params.offset === 'number') searchParams.offset = params.offset.toString()
-
-    const response = await api.get('admin/logs/history', {
-      searchParams
-    }).json<LogHistoryResponse>()
-    return response
-  },
-
-  async clearLogs(): Promise<{ success: boolean; message?: string }> {
-    return api.post('admin/logs/clear').json<{ success: boolean; message?: string }>()
   }
 }
 

@@ -41,8 +41,8 @@ export interface SystemStats {
     request_id: string
     path: string
     method: string
-    status_code: number
-    status?: string
+    status?: 'pending' | 'completed'  // 请求状态：进行中或已完成
+    status_code: number | null  // HTTP 状态码，进行中时为 null
     bytes?: number
     response_time: number
     timestamp: number

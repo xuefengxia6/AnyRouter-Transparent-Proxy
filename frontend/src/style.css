@@ -65,3 +65,19 @@
     background-color: rgb(107 114 128);
   }
 }
+
+/* 全局请求动效，避免局部命名冲突 */
+@keyframes request-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+.animate-request-pulse {
+  animation: request-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

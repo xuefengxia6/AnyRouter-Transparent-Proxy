@@ -29,9 +29,8 @@ from .services.stats import (
     record_request_start,
     record_request_success,
     record_request_error,
-    broadcast_log_message,
     periodic_stats_update,
-    log_producer
+    cleanup_stale_requests
 )
 
 # 导入代理服务
@@ -59,8 +58,8 @@ async def lifespan(_: FastAPI):
     # 启动定时统计更新任务
     stats_task = asyncio.create_task(periodic_stats_update())
 
-    # 启动日志生产者任务
-    log_producer_task = asyncio.create_task(log_producer())
+    # 启动超时请求清理任务
+    cleanup_task = asyncio.create_task(cleanup_stale_requests())
 
     # 输出应用配置信息（只在 worker 进程启动时输出一次）
     print("=" * 60)
@@ -125,7 +124,7 @@ async def lifespan(_: FastAPI):
 
     # Shutdown: Close HTTP client and stop background tasks
     stats_task.cancel()
-    log_producer_task.cancel()
+    cleanup_task.cancel()
 
     try:
         await stats_task
@@ -133,7 +132,7 @@ async def lifespan(_: FastAPI):
         pass
 
     try:
-        await log_producer_task
+        await cleanup_task
     except asyncio.CancelledError:
         pass
 
@@ -233,15 +232,6 @@ async def proxy(path: str, request: Request):
             content=body,
         )
 
-        # 记录请求开始日志
-        if request_id:
-            await broadcast_log_message(
-                "INFO",
-                f"Request started: {request.method} {path}",
-                path,
-                request_id
-            )
-
         # 发送请求并开启流式模式 (不使用 async with)
         resp = await http_client.send(req, stream=True)
 
@@ -266,13 +256,6 @@ async def proxy(path: str, request: Request):
                 # 优雅处理客户端断开连接
                 if DEBUG_MODE:
                     print(f"[Stream Error] {e}")
-                if request_id:
-                    await broadcast_log_message(
-                        "WARNING",
-                        f"Client disconnected during response: {e}",
-                        path,
-                        request_id
-                    )
                 # 静默处理,避免日志污染
             finally:
                 # 确保资源被释放 (作为备份,主要由 BackgroundTask 处理)
@@ -290,12 +273,6 @@ async def proxy(path: str, request: Request):
                         bytes_received,
                         response_time,
                         resp.status_code
-                    )
-                    await broadcast_log_message(
-                        "INFO",
-                        f"Request completed: {request.method} {path} - {resp.status_code} ({bytes_received} bytes, {response_time*1000:.1f}ms)",
-                        path,
-                        request_id
                     )
                 else:
                     # 使用缓存的响应内容
@@ -315,14 +292,6 @@ async def proxy(path: str, request: Request):
                         response_time,
                         response_content,  # 新增参数
                         resp.status_code
-                    )
-                    # 广播错误日志到 SSE
-                    await broadcast_log_message(
-                        "ERROR",
-                        f"Request failed: {request.method} {path} - {resp.status_code} {resp.reason_phrase}",
-                        path,
-                        request_id,
-                        response_content  # 新增参数
                     )
 
         # 使用 BackgroundTask 在响应完成后关闭连接和记录统计
@@ -344,12 +313,6 @@ async def proxy(path: str, request: Request):
                 time.time() - start_time,
                 None,
                 502
-            )
-            await broadcast_log_message(
-                "ERROR",
-                f"Upstream request failed: {request.method} {path} - {str(e)}",
-                path,
-                request_id
             )
         return Response(content=f"Upstream request failed: {e}", status_code=502)
 

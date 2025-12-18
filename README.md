@@ -104,9 +104,11 @@ docker run -d --name anthropic-proxy -p 8088:8088 \
   anthropic-proxy
 ```
 
-服务将在 `http://localhost:8088` 启动，然后在 Claude Code 中配置此地址即可。
+服务将在 [http://localhost:8088](http://localhost:8088) 启动，然后在 Claude Code 中配置此地址即可。
 
-管理面板通过 `http://localhost:8088/admin` 访问。
+~~管理面板通过 [http://localhost:8088/admin](http://localhost:8088/admin) 访问。~~
+
+现在管理面板可以直接访问主页 [http://localhost:8088](http://localhost:8088) 自动跳转了
 
 ### 本地运行
 
@@ -126,7 +128,7 @@ cp .env.example .env
 python -m backend.app
 ```
 
-服务将在 `http://localhost:8088` 启动。
+服务将在 [http://localhost:8088](http://localhost:8088) 启动。
 
 **注意**：本地开发时，如果需要使用 Web 管理面板，需要先构建前端：
 
@@ -139,7 +141,9 @@ cd ..
 
 构建产物会输出到 `static/` 目录（该目录已在 `.gitignore` 中忽略）。
 
-管理面板通过 `http://localhost:8088/admin` 访问。
+~~管理面板通过 [http://localhost:8088/admin](http://localhost:8088/admin) 访问。~~
+
+现在管理面板可以直接访问主页 [http://localhost:8088](http://localhost:8088) 自动跳转了
 
 ## 配置说明
 

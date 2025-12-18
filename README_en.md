@@ -2,19 +2,23 @@
 
 A lightweight transparent HTTP proxy service based on FastAPI, specifically designed to resolve the 500 error issue with AnyRouter's Anthropic API in the Claude Code for VS Code plugin.
 
-## Demo Screenshot
+## Demo Screenshots
 
-<img width="3754" height="2110" alt="VS Code finally works with CC plugin" src="https://github.com/user-attachments/assets/6a492f30-43ed-4ba1-ad9f-15801b356f7a" />
+![Demo Screenshot](./screenshot/效果图.png)
+
+![Dashboard Page](./screenshot/仪表板页面.png)
 
 
 ## Table of Contents
 
 - [Core Features](#core-features)
+- [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
   - [Docker Deployment (Recommended)](#docker-deployment-recommended)
   - [Local Setup](#local-setup)
 - [Configuration](#configuration)
 - [Core Functionality](#core-functionality)
+- [Usage Example](#usage-example)
 - [Architecture & Technology](#architecture--technology)
 - [Security](#security)
 - [Contributing](#contributing)
@@ -27,6 +31,34 @@ A lightweight transparent HTTP proxy service based on FastAPI, specifically desi
 - **Flexible Configuration** - Supports environment variable configuration for target URL and System Prompt replacement
 - **High Performance** - Connection pool reuse, asynchronous processing, efficiently handles concurrent requests
 - **Intelligent Processing** - Automatically calculates Content-Length, avoiding protocol errors caused by request body modifications
+- **Web Management Dashboard** - Provides real-time monitoring, statistics analysis, and configuration management
+
+## Project Structure
+
+```
+AnyRouter-Transparent-Proxy/
+├── backend/              # Backend service (FastAPI)
+│   ├── app.py           # Core proxy logic
+│   └── requirements.txt # Python dependencies
+├── frontend/            # Frontend project (Vue 3 + TypeScript)
+│   ├── src/            # Source code
+│   ├── package.json    # Frontend dependencies
+│   └── vite.config.ts  # Vite configuration
+├── env/                 # Configuration files directory
+│   └── .env.headers.json # Custom request headers configuration
+├── docs/                # Documentation
+├── static/              # Frontend build artifacts (.gitignore)
+├── Dockerfile           # Docker image build
+├── docker-compose.yml   # Docker Compose configuration
+├── .env.example         # Environment variable template
+└── CLAUDE.md           # AI context index
+```
+
+**Notes**:
+- `backend/` - Backend Python service, handles proxy logic and API processing
+- `frontend/` - Frontend Vue project, provides Web management dashboard
+- `static/` - Frontend build artifacts, automatically generated during Docker build, not committed to Git
+- `env/` - Runtime configuration files directory
 
 ## Quick Start
 
@@ -69,11 +101,15 @@ docker run -d --name anthropic-proxy -p 8088:8088 anthropic-proxy
 
 # Custom target URL
 docker run -d --name anthropic-proxy -p 8088:8088 \
-  -e API_BASE_URL=https://q.quuvv.cn \
+  -e API_BASE_URL=https://anyrouter.top \
   anthropic-proxy
 ```
 
-The service will start at `http://localhost:8088`, then configure this address in Claude Code.
+The service will start at [http://localhost:8088](http://localhost:8088), then configure this address in Claude Code.
+
+~~Access the management dashboard at [http://localhost:8088/admin](http://localhost:8088/admin).~~
+
+The management dashboard can now be accessed directly from the homepage [http://localhost:8088](http://localhost:8088) with automatic redirection.
 
 ### Local Setup
 
@@ -81,7 +117,7 @@ The service will start at `http://localhost:8088`, then configure this address i
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 
 # Or install manually
 pip install fastapi uvicorn httpx python-dotenv
@@ -89,11 +125,26 @@ pip install fastapi uvicorn httpx python-dotenv
 # Copy environment variable template
 cp .env.example .env
 
-# Start the service
-python app.py
+# Start the service (run from project root directory)
+python -m backend.app
 ```
 
-The service will start at `http://0.0.0.0:8088`.
+The service will start at [http://localhost:8088](http://localhost:8088).
+
+**Note**: For local development, if you need to use the Web management dashboard, you need to build the frontend first:
+
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+The build artifacts will be output to the `static/` directory (this directory is ignored in `.gitignore`).
+
+~~Access the management dashboard at [http://localhost:8088/admin](http://localhost:8088/admin).~~
+
+The management dashboard can now be accessed directly from the homepage [http://localhost:8088](http://localhost:8088) with automatic redirection.
 
 ## Configuration
 
@@ -102,16 +153,37 @@ The service will start at `http://0.0.0.0:8088`.
 Create a `.env` file or set environment variables:
 
 ```bash
-# API target address (default: https://anyrouter.top) Or use reverse address
+# API target address (default: https://anyrouter.top) or use reverse proxy address
 API_BASE_URL=https://anyrouter.top
 
 # System Prompt replacement (optional)
 # Replaces the text content of the first element in the system array in the request body
 SYSTEM_PROMPT_REPLACEMENT="You are Claude Code, Anthropic's official CLI for Claude."
 
-# If you need to access through a proxy, please uncomment the two lines below and set the proxy address.
+# If you need to access through a proxy, please uncomment the two lines below and set the proxy address
 # HTTP_PROXY=http://127.0.0.1:7890
 # HTTPS_PROXY=http://127.0.0.1:7890
+
+# Debug mode (default: false)
+DEBUG_MODE=false
+
+# Service port (default: 8088)
+PORT=8088
+
+# Enable Web management dashboard (default: true)
+ENABLE_DASHBOARD=true
+
+# Enable log persistence (default: true)
+LOG_PERSISTENCE_ENABLED=true
+
+# Log storage path (default: data/logs)
+LOG_STORAGE_PATH=data/logs
+
+# Log retention days (default: 7)
+LOG_RETENTION_DAYS=7
+
+# Daily log limit (default: 1000)
+LOG_DAILY_LIMIT=1000
 ```
 
 ### Custom Request Headers (Optional)

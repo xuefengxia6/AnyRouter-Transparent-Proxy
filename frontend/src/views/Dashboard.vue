@@ -182,14 +182,14 @@
           <div
             v-for="request in recentRequests"
             :key="request.request_id"
-            :class="['p-3 rounded-lg', getStatusContainerClass(request.status_code)]"
+            :class="['p-3 rounded-lg', getStatusContainerClass(request.status_code, request.status)]"
           >
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-3">
                 <div
                   :class="[
                     'w-2 h-2 rounded-full',
-                    getStatusDotClass(request.status_code)
+                    getStatusDotClass(request.status_code, request.status)
                   ]"
                 />
                 <div class="flex items-center space-x-2">
@@ -212,17 +212,20 @@
                 </div>
               </div>
               <div class="flex items-center space-x-4">
-                <span class="text-sm text-gray-600 dark:text-gray-400">
-                  {{ formatResponseTimeFromSeconds(request.response_time) }}
-                </span>
-                <span
-                  :class="[
-                    'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                    getStatusBadgeClass(request.status_code)
-                  ]"
-                >
-                  {{ formatStatusLabel(request.status_code) }}
-                </span>
+                <!-- 响应时间和状态码：仅在请求完成时显示 -->
+                <template v-if="request.status === 'completed'">
+                  <span class="text-sm text-gray-600 dark:text-gray-400">
+                    {{ formatResponseTimeFromSeconds(request.response_time) }}
+                  </span>
+                  <span
+                    :class="[
+                      'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                      getStatusBadgeClass(request.status_code, request.status)
+                    ]"
+                  >
+                    {{ formatStatusLabel(request.status_code, request.status) }}
+                  </span>
+                </template>
               </div>
             </div>
             <!-- 错误信息 -->
